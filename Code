@@ -1,0 +1,130 @@
+#define BLYNK_TEMPLATE_ID "TMPL34Lfghb0P"
+#define BLYNK_TEMPLATE_NAME "Water Level Monitoring System"
+
+// Include the necessary libraries
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+// OLED display settings
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+#define trig 12
+#define echo 13
+#define relay 14
+
+// Enter your tank max value (CM)
+int MaxLevel = 8;
+
+int Level1 = (MaxLevel * 75) / 100;
+int Level2 = (MaxLevel * 50) / 100;
+int Level3 = (MaxLevel * 25) / 100;
+
+BlynkTimer timer;
+
+// Enter your Auth token
+char auth[] = "FfGrUyOM19RRSuBN5___apTRTwgS4Eso";
+
+// Enter your WiFi SSID and password
+char ssid[] = "*************";
+char pass[] = "********";
+
+void setup() {
+  // Debug console
+  Serial.begin(115200);
+
+  // Initialize OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;); // Don't proceed, loop forever
+  }
+
+  // Clear and setup the display
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.print("System Loading..");
+  display.display();
+  
+  // Delay to allow the user to see the message
+  delay(3000);
+  display.clearDisplay();
+
+  // Blynk initialization
+  Blynk.begin(auth, ssid, pass, "blynk.cloud", 80);
+
+  pinMode(trig, OUTPUT);
+  pinMode(echo, INPUT);
+  pinMode(relay, OUTPUT);
+  digitalWrite(relay, HIGH);
+
+  // Set a timer to run the ultrasonic function every second (1000ms)
+  timer.setInterval(1000L, ultrasonic);
+}
+
+// Function to get the ultrasonic sensor values
+void ultrasonic() {
+  digitalWrite(trig, LOW);
+  delayMicroseconds(4);
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+  long t = pulseIn(echo, HIGH);
+  int distance = t / 29 / 2;
+
+  // Debugging to check the distance value
+  Serial.print("Distance: ");
+  Serial.println(distance);
+
+  int blynkDistance = (distance - MaxLevel) * -1;
+  if (distance <= MaxLevel) {
+    Blynk.virtualWrite(V0, blynkDistance);
+  } else {
+    Blynk.virtualWrite(V0, 0);
+  }
+
+  // Update OLED display with the water level
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Water Level: ");
+  display.print(distance);
+  display.print(" cm");
+
+  if (Level1 <= distance) {
+    display.setCursor(0, 20);
+    display.print("Status: Low");
+  } else if (Level2 <= distance && Level1 > distance) {
+    display.setCursor(0, 20);
+    display.print("Status: Medium");
+  } else if (Level3 <= distance && Level2 > distance) {
+    display.setCursor(0, 20);
+    display.print("Status: Full");
+  }
+
+  display.display();
+}
+
+// Function to control the relay based on the button value in Blynk
+BLYNK_WRITE(V1) {
+  bool Relay = param.asInt();
+  if (Relay == 1) {
+    digitalWrite(relay, LOW);
+    display.setCursor(0, 40);
+    display.print("Motor is ON ");
+  } else {
+    digitalWrite(relay, HIGH);
+    display.setCursor(0, 40);
+    display.print("Motor is OFF");
+  }
+  display.display();
+}
+
+void loop() {
+  timer.run();  // Run the BlynkTimer
+  Blynk.run();  // Run the Blynk library
+}
